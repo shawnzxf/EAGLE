@@ -28,6 +28,7 @@ import torch.utils.checkpoint
 from torch import nn
 
 from transformers.activations import ACT2FN
+from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 
 try:
@@ -95,7 +96,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+def apply_rotary_pos_emb_local(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
     cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
     sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
@@ -106,7 +107,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-class LlamaRotaryEmbedding(torch.nn.Module):
+class LlamaRotaryEmbeddingLocal(torch.nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
 
@@ -214,7 +215,9 @@ class LlamaAttention(nn.Module):
             self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
             self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        self._init_rope()
+        # self._init_rope()
+        self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
+
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -282,8 +285,8 @@ class LlamaAttention(nn.Module):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = self.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -676,7 +679,7 @@ class Model(nn.Module):
         len_posi = input_ids.shape[1]
         self.reset()
 
-        # with Timer("draft many"):
+        # CTE for draft model
         if hasattr(self, "stable_kv") and self.stable_kv is not None:
             kv_len = self.stable_kv[0][0].shape[2]
             out_hidden, past_key_values = self(hidden_states, input_ids=input_ids[:, kv_len:],
@@ -700,7 +703,7 @@ class Model(nn.Module):
         tree_mask = self.tree_mask_init
         topk_cs_index = torch.arange(top_k, device=self.embed_tokens.weight.device)
 
-        # 4
+        # TKG for draft model
         for i in range(depth):
             self.tree_mask = tree_mask
             position_ids = len_posi + self.position_ids

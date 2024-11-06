@@ -38,7 +38,7 @@ class EaModel(nn.Module):
     ):
 
         super().__init__()
-        self.base_model = base_model
+        self.base_model = base_model # target model
         self.config = base_model.config
         self.hidden_size = base_model.lm_head.weight.shape[-1]
         self.vocab_size = base_model.lm_head.weight.shape[0]
@@ -65,7 +65,7 @@ class EaModel(nn.Module):
 
         else:
             self.ea_layer.diff_device = False
-        self.ea_layer.load_state_dict(ea_layer_state_dict, strict=True)
+        self.ea_layer.load_state_dict(ea_layer_state_dict, strict=True) # draft model
         self.ea_layer.to(self.base_model.dtype).to(device)
         self.ea_layer.init_tree()
 
@@ -109,17 +109,28 @@ class EaModel(nn.Module):
             configpath = hf_hub_download(ea_model_path, "config.json")
 
         try:
-            load_model_path=os.path.join(ea_model_path, "pytorch_model.bin")
-            if not os.path.exists(load_model_path):
-                load_model_path=hf_hub_download(ea_model_path, "pytorch_model.bin")
-            ea_layer_state_dict = torch.load(load_model_path,
-                                             map_location=base_model.device)
-        except:
+            # load_model_path=os.path.join(ea_model_path, "pytorch_model.bin")
+            # if not os.path.exists(load_model_path):
+            #     load_model_path=hf_hub_download(ea_model_path, "pytorch_model.bin")
+            # ea_layer_state_dict = torch.load(load_model_path,
+            #                                  map_location=base_model.device)
             from safetensors.torch import load_file
-            load_model_path = os.path.join(ea_model_path, "model.safetensors")
-            if not os.path.exists(load_model_path):
-                load_model_path = hf_hub_download(ea_model_path, "model.safetensors")
-            ea_layer_state_dict = load_file(load_model_path)
+            # load_model_path = os.path.join(ea_model_path, "model.safetensors")
+            # if not os.path.exists(load_model_path):
+            #     load_model_path = hf_hub_download(ea_model_path, "model.safetensors")
+            
+            # TODO: update this to be general
+            catelog_path = os.path.join(ea_model_path, "model.safetensors.index.json")
+            with open(catelog_path) as f:
+                catalog = json.load(f)
+            catalog = set(catalog["weight_map"].values())
+            ea_layer_state_dict = {}
+            for file_name in catalog:
+                file_path = os.path.join(ea_model_path, file_name)
+                ea_layer_state_dict.update(load_file(file_path))
+            ea_layer_state_dict.pop("lm_head.weight", None)
+        except Exception as e:
+            raise e
         model = cls(
             base_model,
             base_model_path,
@@ -142,14 +153,14 @@ class EaModel(nn.Module):
             for i in range(len(cans)):
                 length = cans[i]
                 input_ids = torch.randint(0, model.config.vocab_size - 200, (1, length)).to(device)
-                torch.cuda.synchronize()
+                # torch.cuda.synchronize()
                 start_time = time.time()
                 for _ in range(20):
-                    torch.cuda.synchronize()
+                    # torch.cuda.synchronize()
                     with torch.no_grad():
                         outputs = model.base_model(input_ids)
-                    torch.cuda.synchronize()
-                torch.cuda.synchronize()
+                    # torch.cuda.synchronize()
+                # torch.cuda.synchronize()
                 end_time = time.time()
                 times.append((end_time - start_time) / x[i])
             total_token=cans[times.index(min(times))]
@@ -246,6 +257,7 @@ class EaModel(nn.Module):
 
             draft_tokens=draft_tokens.to(input_ids.device)
             #with Timer("tree_decoding"):
+            # target model verification
             logits, hidden_state_new, outputs = tree_decoding(
                 self,
                 draft_tokens,

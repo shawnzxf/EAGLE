@@ -230,6 +230,7 @@ def initialize_tree0(input_ids, model, past_key_values, logits_processor):
     return draft_tokens, retrieve_indices,tree_mask,tree_position_ids, logits, hidden_state, sample_token
 
 def initialize_tree(input_ids, model, past_key_values, logits_processor):
+    # CTE
     outputs, orig, hidden_states = model(
         input_ids, past_key_values=past_key_values, output_orig=True
     )
@@ -242,9 +243,10 @@ def initialize_tree(input_ids, model, past_key_values, logits_processor):
     else:
         token = torch.argmax(orig[:, -1])
         token = token[None, None]
-    input_ids = torch.cat((input_ids, token.to(input_ids.device)), dim=1)
+    input_ids = torch.cat((input_ids, token.to(input_ids.device)), dim=1) # we need to comment out this line, first CTE output from target model is fed into draft model as input
     # Clone the output hidden states
 
+    # TKG with draft model for multiple steps
     draft_tokens, retrieve_indices,tree_mask,tree_position_ids = model.ea_layer.topK_genrate(hidden_states, input_ids, model.base_model.lm_head,logits_processor)
     return draft_tokens, retrieve_indices,tree_mask,tree_position_ids, orig, hidden_states, token
 

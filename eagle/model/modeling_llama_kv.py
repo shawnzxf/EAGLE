@@ -20,6 +20,7 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutputWithPast,
 )
 from transformers.modeling_utils import PreTrainedModel
+from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
@@ -133,7 +134,7 @@ class LlamaRMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 
 
-class LlamaRotaryEmbedding(nn.Module):
+class LlamaRotaryEmbeddingLocal(nn.Module):
     """
     Llama Rotary Positional Embedding Module.
 
@@ -335,7 +336,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+def apply_rotary_pos_emb_local(q, k, cos, sin, position_ids):
     """
     Apply rotary position embeddings to query and key tensors.
 
@@ -490,7 +491,8 @@ class LlamaAttention(nn.Module):
         self.o_proj = nn.Linear(
             self.num_heads * self.head_dim, self.hidden_size, bias=False
         )
-        self._init_rope()
+        # self._init_rope()
+        self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -579,9 +581,9 @@ class LlamaAttention(nn.Module):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(
-            query_states, key_states, cos, sin, position_ids
+            query_states, key_states, cos, sin
         )
 
         # [MODIFIED] Using KVCache mechanism for preallocated GPU memory optimization
