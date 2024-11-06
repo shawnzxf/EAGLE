@@ -9,7 +9,7 @@ from .modeling_llama_kv import LlamaForCausalLM as KVLlamaForCausalLM
 from .modeling_mixtral_kv import MixtralForCausalLM as KVMixtralForCausalLM
 from .utils import *
 from .kv_cache import initialize_past_key_values
-from .choices import mc_sim_7b_63
+from .choices import linear_tree_len_6
 from transformers import AutoTokenizer
 import os
 from huggingface_hub import hf_hub_download
@@ -98,11 +98,22 @@ class EaModel(nn.Module):
             base_model_path,
             configpath
         )
-        load_model_path=os.path.join(ea_model_path, "pytorch_model.bin")
-        if not os.path.exists(load_model_path):
-            load_model_path=hf_hub_download(ea_model_path, "pytorch_model.bin")
-        ea_layer_state_dict = torch.load(load_model_path,
-                                         map_location=base_model.device)
+        # load_model_path=os.path.join(ea_model_path, "pytorch_model.bin")
+        # if not os.path.exists(load_model_path):
+        #     load_model_path=hf_hub_download(ea_model_path, "pytorch_model.bin")
+        # ea_layer_state_dict = torch.load(load_model_path,
+        #                                  map_location=base_model.device)
+        
+        from safetensors.torch import load_file
+        catelog_path = os.path.join(ea_model_path, "model.safetensors.index.json")
+        with open(catelog_path) as f:
+            catalog = json.load(f)
+        catalog = set(catalog["weight_map"].values())
+        ea_layer_state_dict = {}
+        for file_name in catalog:
+            file_path = os.path.join(ea_model_path, file_name)
+            ea_layer_state_dict.update(load_file(file_path))
+        ea_layer_state_dict.pop("lm_head.weight", None)
         model.ea_layer.load_state_dict(ea_layer_state_dict, strict=True)
 
         return model
@@ -159,7 +170,7 @@ class EaModel(nn.Module):
             top_k=0.0,
             max_new_tokens=512,
             max_length=2048,
-            tree_choices=mc_sim_7b_63,
+            tree_choices=linear_tree_len_6,
 
     ):
         if temperature > 1e-5:
@@ -259,7 +270,7 @@ class EaModel(nn.Module):
             top_p=0.0,
             top_k=0.0,
             max_steps=512,
-            tree_choices=mc_sim_7b_63,
+            tree_choices=linear_tree_len_6,
 
     ):
         if temperature > 1e-5:
@@ -363,7 +374,7 @@ class EaModel(nn.Module):
             top_p=0.0,
             top_k=0.0,
             max_steps=512,
-            tree_choices=mc_sim_7b_63,
+            tree_choices=linear_tree_len_6,
 
     ):
         if temperature > 1e-5:

@@ -3,7 +3,7 @@ import torch
 # typing
 from typing import List
 
-TOPK = 10  # topk for sparse tree
+TOPK = 1  # topk for sparse tree
 
 
 def pad_path(path: List[int], length: int, pad_value: int = -2) -> List[int]:
