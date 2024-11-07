@@ -246,7 +246,8 @@ class EaModel(nn.Module):
                 logits, candidates, logits_processor, cart_candidates_prob, tree_logits[2], tree_buffers["p_indices"],
                 tree_candidates, tree_buffers["b_indices"]
             )
-            print(f"[{datetime.datetime.now()}] Completed speculation and verification for step {idx}, current seq len: {input_ids.shape[1]}", flush=True)
+            torch.save(accept_length, f"tkg_accepted_len_{idx:03}.pt")
+            print(f"[{datetime.datetime.now()}] Completed speculation and verification for step {idx}, accepted len: {accept_length}, current seq len: {input_ids.shape[1]}", flush=True)
             
             # speculation from draft model
             input_ids, tree_logits, new_token, hidden_state, sample_token = update_inference_inputs(
