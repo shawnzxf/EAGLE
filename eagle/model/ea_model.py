@@ -1,6 +1,7 @@
 import copy
 import json
 import time
+import datetime
 
 import torch
 import torch.nn as nn
@@ -142,6 +143,7 @@ class EaModel(nn.Module):
                 orig = self.base_model.lm_head(outputs[0])
             hidden_states = outputs[0].clone()
         if init:
+            # only invoked during CTE
             if logits_processor is not None:
                 logits = orig[:, -1]
                 logits = logits_processor(None, logits)
@@ -151,11 +153,13 @@ class EaModel(nn.Module):
                 token = torch.argmax(orig[:, -1])
                 token = token[None, None]
             input_ids = torch.cat((input_ids, token.to(input_ids.device)), dim=1)
+
+            torch.save([token, orig], "cte_target_outputs.pt")
             # Clone the output hidden states
 
-            ea_logits = self.ea_layer.topK_genrate(hidden_states, input_ids, self.base_model.lm_head, logits_processor)
+            ea_logits = self.ea_layer.topK_genrate(hidden_states, input_ids, self.base_model.lm_head, logits_processor, run_cnt=0)
             if output_orig:
-                return ea_logits, outputs, orig, hidden_states, token
+                return ea_logits, outputs, orig, hidden_states, token # CTE goes here
             return ea_logits, hidden_states, token
         else:
             if output_orig:
@@ -173,6 +177,7 @@ class EaModel(nn.Module):
             tree_choices=linear_tree_len_6,
 
     ):
+        print(f"[{datetime.datetime.now()}] Starting eagle generation!", flush=True)
         if temperature > 1e-5:
             logits_processor = prepare_logits_processor(temperature=temperature, top_p=top_p, top_k=top_k)
         else:
@@ -212,11 +217,13 @@ class EaModel(nn.Module):
 
         input_len = input_ids.shape[1]
         reset_tree_mode(self)
+        # CTE for both target and draft model
         tree_logits, logits, hidden_state, sample_token = initialize_tree(
             input_ids, self, tree_buffers["tree_attn_mask"], past_key_values, logits_processor
         )
+        print(f"[{datetime.datetime.now()}] Done CTE for both target and draft model!", flush=True)
+        
         new_token = 0
-
         for idx in range(max_length):
             candidates, cart_candidates_prob, tree_candidates = generate_candidates(
                 tree_logits,
@@ -225,6 +232,7 @@ class EaModel(nn.Module):
                 sample_token,
                 logits_processor
             )
+            # verify by target model
             logits, hidden_state_new, outputs = tree_decoding(
                 self,
                 tree_candidates,
@@ -232,11 +240,15 @@ class EaModel(nn.Module):
                 tree_buffers["tree_position_ids"],
                 input_ids,
                 tree_buffers["retrieve_indices_head"],
+                run_cnt=idx,
             )
             best_candidate, accept_length, sample_p = evaluate_posterior(
                 logits, candidates, logits_processor, cart_candidates_prob, tree_logits[2], tree_buffers["p_indices"],
                 tree_candidates, tree_buffers["b_indices"]
             )
+            print(f"[{datetime.datetime.now()}] Completed speculation and verification for step {idx}, current seq len: {input_ids.shape[1]}", flush=True)
+            
+            # speculation from draft model
             input_ids, tree_logits, new_token, hidden_state, sample_token = update_inference_inputs(
                 input_ids,
                 candidates,
@@ -252,7 +264,8 @@ class EaModel(nn.Module):
                 self,
                 hidden_state,
                 hidden_state_new,
-                sample_p
+                sample_p,
+                run_cnt=idx+1,
             )
 
             if self.tokenizer.eos_token_id in input_ids[0, input_len:].tolist():
@@ -261,6 +274,7 @@ class EaModel(nn.Module):
                 return input_ids
             if input_ids.shape[1] > max_length:
                 return input_ids
+
 
     @torch.no_grad()
     def ea_generate(

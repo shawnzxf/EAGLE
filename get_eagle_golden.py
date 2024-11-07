@@ -1,9 +1,12 @@
 import torch
+import datetime
 from eagle.model.ea_model import EaModel
 from fastchat.model import get_conversation_template
 from eagle.model.choices import linear_tree_len_6
 
 def generate():
+    print(f"[{datetime.datetime.now()}] Starting script", flush=True)
+
     model = EaModel.from_pretrained(
         base_model_path=base_model_path,
         ea_model_path=EAGLE_model_path,
@@ -24,9 +27,14 @@ def generate():
         inputs.input_ids,
         temperature=0.0,
         top_k=1,
-        max_new_tokens=18,
+        max_length=20,
         tree_choices=linear_tree_len_6)
-    print("Done!")
+    
+
+    output_tokens = model.tokenizer.batch_decode(
+        output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+    )
+    print(f"Generated output:\n{output_tokens}")
 
 
 if __name__ == "__main__":

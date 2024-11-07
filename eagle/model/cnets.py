@@ -763,13 +763,14 @@ class Model(nn.Module):
         #     return sampled_indices, sampled_probs
 
     @torch.no_grad()
-    def topK_genrate(self, hidden_states, input_ids, head, logits_processor,max_length=4, use_cache=True):
-        # test_=input_ids
-        # input_ids = torch.tensor([state[1:]])
+    def topK_genrate(self, hidden_states, input_ids, head, logits_processor,max_length=4, use_cache=True, run_cnt=0):
         input_ids = input_ids[:, 1:]
         input_ids = input_ids.to(hidden_states.device)
         ss_token,ss_prob,ss_op = [],[],[]
+        ss_logits = []
         len_posi=input_ids.shape[1]
+        
+        original_input_ids = input_ids.clone()
         self.reset()
         if use_cache:
 
@@ -801,6 +802,7 @@ class Model(nn.Module):
                     op=None
 
                 ss_token.append(topk_index)
+                ss_logits.append(last_headout)
                 ss_prob.append(topk_prob)
                 ss_op.append(op)
                 #topk_index = torch.topk(last_headout, top_k, dim=-1).indices
@@ -816,6 +818,7 @@ class Model(nn.Module):
                 #hidden_states = hidden_states.repeat(1,len_sq,1)
                 self.tree_mask=self.tree_buffer['attn_mask'][i]
                 position_ids=len_posi+self.tree_buffer["position_ids"][i]
+                # Speculation from draft model
                 out_hidden, past_key_values = self(hidden_states, input_ids=input_ids, past_key_values=past_key_values,
                                                    position_ids=position_ids,use_cache=True)
                 len_posi += 1
@@ -839,12 +842,23 @@ class Model(nn.Module):
                 topk_index, topk_prob = top.indices, top.values
                 op=None
             ss_token.append(topk_index)
+            ss_logits.append(last_headout)
             ss_prob.append(topk_prob)
             ss_op.append(op)
 
         else:
             # TODO
             pass
+
+        speculated_tokens = torch.cat(ss_token)
+        speculated_tokens = speculated_tokens[None]
+        speculated_tokens = torch.cat([original_input_ids[:, -1:, None], speculated_tokens], dim=1)
+        speculated_logits = torch.cat(ss_logits)
+        speculated_logits = speculated_logits[None]
+
+        # print(f"Saving draft tokens for {run_cnt}: {speculated_tokens.flatten()}, with inputs: {original_input_ids.flatten()}")
+        torch.save([speculated_tokens, speculated_logits], 
+                   f"tkg_draft_outputs_{run_cnt:03}.pt")
 
         return (torch.cat(ss_token),torch.cat(ss_prob),ss_op)
 

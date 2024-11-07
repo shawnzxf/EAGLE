@@ -302,6 +302,7 @@ def tree_decoding(
         tree_position_ids,
         input_ids,
         retrieve_indices,
+        run_cnt,
 ):
     position_ids = tree_position_ids + input_ids.shape[1]
 
@@ -312,6 +313,11 @@ def tree_decoding(
         position_ids=position_ids,
         init=False,
     )
+
+    top = torch.topk(tree_logits, 1, dim=-1)
+    topk_index = top.indices
+    # print(f"Saving target tokens for {run_cnt}: {topk_index.flatten()}, with inputs: {tree_candidates.flatten()}")
+    torch.save([topk_index, tree_logits], f"tkg_target_outputs_{run_cnt:03}.pt")
 
     logits = tree_logits[0, retrieve_indices]
     return logits, hidden_state, outputs
@@ -428,7 +434,8 @@ def update_inference_inputs(
         model,
         hidden_state,
         hidden_state_new,
-        sample_p
+        sample_p,
+        run_cnt,
 ):
     prev_input_len = input_ids.shape[1]
     # Map the best candidate indices to the original indices in the sequence
@@ -463,9 +470,11 @@ def update_inference_inputs(
         token = torch.argmax(prob)
         token = token[None, None]
     # hidden_state = torch.cat((hidden_state, accept_hidden_state_new), dim=1)
+    # TKG from draft model
     tree_logits = model.ea_layer.topK_genrate(accept_hidden_state_new,
                                               input_ids=torch.cat((input_ids, token.to(input_ids.device)), dim=1),
-                                              head=model.base_model.lm_head, logits_processor=logits_processor)
+                                              head=model.base_model.lm_head, logits_processor=logits_processor,
+                                              run_cnt=run_cnt)
 
     new_token += accept_length + 1
 
