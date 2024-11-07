@@ -27,7 +27,7 @@ def generate():
         inputs.input_ids,
         temperature=0.0,
         top_k=1,
-        max_length=20,
+        max_length=512,
         tree_choices=linear_tree_len_6)
     
 
