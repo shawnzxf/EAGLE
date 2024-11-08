@@ -157,7 +157,7 @@ class EaModel(nn.Module):
             torch.save([token, orig], "cte_target_outputs.pt")
             # Clone the output hidden states
 
-            ea_logits = self.ea_layer.topK_genrate(hidden_states, input_ids, self.base_model.lm_head, logits_processor, run_cnt=0)
+            ea_logits = self.ea_layer.topK_genrate(hidden_states, input_ids, self.base_model.lm_head, logits_processor, run_cnt=0, is_init=True)
             if output_orig:
                 return ea_logits, outputs, orig, hidden_states, token # CTE goes here
             return ea_logits, hidden_states, token

@@ -763,7 +763,7 @@ class Model(nn.Module):
         #     return sampled_indices, sampled_probs
 
     @torch.no_grad()
-    def topK_genrate(self, hidden_states, input_ids, head, logits_processor,max_length=4, use_cache=True, run_cnt=0):
+    def topK_genrate(self, hidden_states, input_ids, head, logits_processor,max_length=4, use_cache=True, run_cnt=0, is_init=False):
         input_ids = input_ids[:, 1:]
         input_ids = input_ids.to(hidden_states.device)
         ss_token,ss_prob,ss_op = [],[],[]
@@ -791,7 +791,9 @@ class Model(nn.Module):
                 else:
                     last_headout=F.linear(last_hidden,self.headweight)
 
-
+            if is_init:
+                cte_draft_logits = head(out_hidden)
+                torch.save(cte_draft_logits, "cte_draft_logits.pt")
 
             for i in range(len(self.tree_buffer['tree_indices'])):
                 if logits_processor is not None:
