@@ -224,6 +224,7 @@ class EaModel(nn.Module):
         print(f"[{datetime.datetime.now()}] Done CTE for both target and draft model!", flush=True)
         
         new_token = 0
+        accept_length_sum = 0
         for idx in range(max_length):
             candidates, cart_candidates_prob, tree_candidates = generate_candidates(
                 tree_logits,
@@ -247,7 +248,8 @@ class EaModel(nn.Module):
                 tree_candidates, tree_buffers["b_indices"]
             )
             torch.save(accept_length, f"tkg_accepted_len_{idx:03}.pt")
-            print(f"[{datetime.datetime.now()}] Completed speculation and verification for step {idx}, accepted len: {accept_length}, current seq len: {input_ids.shape[1]}", flush=True)
+            accept_length_sum += accept_length
+            print(f"[{datetime.datetime.now()}] Completed speculation and verification for step {idx}, accepted len: {accept_length}, avg accpeted len: {accept_length_sum/(idx+1)}, current seq len: {input_ids.shape[1]}", flush=True)
             
             # speculation from draft model
             input_ids, tree_logits, new_token, hidden_state, sample_token = update_inference_inputs(
